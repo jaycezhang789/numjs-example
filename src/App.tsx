@@ -18,6 +18,7 @@ import {
   nanmean,
   nansum,
   neg,
+  quantile,
   percentile,
   compress,
   sobelFilter,
@@ -27,6 +28,7 @@ import {
   solve,
   eigen,
   sub,
+  sumUnsafe,
   sum,
   where,
   avgPool,
@@ -646,9 +648,13 @@ const useDemoSections = (status: Status, asyncData: LinearAsyncData) =>
     const meanValue = formatNumber(Number(nanmean(statsMatrix).toArray()[0]))
     const nanSumValue = formatNumber(Number(nansum(statsMatrix).toArray()[0]))
     const medianValue = formatNumber(Number(median(statsMatrix).toArray()[0]))
+    const quantile75 = formatNumber(
+      Number(quantile(statsMatrix, 0.75).toArray()[0]),
+    )
     const percentile90 = formatNumber(
       Number(percentile(statsMatrix, 90).toArray()[0]),
     )
+    const sumUnsafeValue = formatNumber(sumUnsafe(statsMatrix))
 
     const convInputMatrix = new Matrix(CONV_INPUT_VALUES, 3, 3)
     const convKernelMatrix = new Matrix(CONV_KERNEL_VALUES, 2, 2)
@@ -1321,18 +1327,21 @@ const useDemoSections = (status: Status, asyncData: LinearAsyncData) =>
           {
             title: '更多聚合函数',
             description:
-              'nansum、median 与 percentile 可提供更丰富的统计量。',
-            expression: 'nansum(matrix), median(matrix), percentile(matrix, 90)',
+              'nansum、median、quantile、percentile 与 sumUnsafe 覆盖更多统计需求。',
+            expression:
+              'nansum(matrix), median(matrix), quantile(matrix, 0.75), percentile(matrix, 90), sumUnsafe(matrix)',
             inputs: [
               { label: '观测矩阵', table: matrixToTable(statsMatrix) },
             ],
             outputs: [
               { label: 'nansum(matrix)', scalar: nanSumValue },
               { label: 'median(matrix)', scalar: medianValue },
+              { label: 'quantile(matrix, 0.75)', scalar: quantile75 },
               { label: 'percentile(matrix, 90)', scalar: percentile90 },
+              { label: 'sumUnsafe(matrix)', scalar: sumUnsafeValue },
             ],
             highlight:
-              'nansum 跳过 NaN，percentile 支持任意分位，便于风险或阈值分析。',
+              'nansum 跳过 NaN；quantile/percentile 计算分位；sumUnsafe 提供无补偿求和结果便于性能对比。',
           },
         ],
       },
