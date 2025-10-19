@@ -45,3 +45,15 @@ export type LinearAsyncResult = {
   gaussian?: Matrix
   gaussianError?: string
 }
+
+export type DocLink = {
+  label: string
+  url: string
+  note?: string
+}
+
+export type DocGroup = {
+  title: string
+  description: string
+  links: DocLink[]
+}

@@ -1,4 +1,4 @@
-import type { Matrix } from '@jayce789/numjs'
+import { Matrix } from '@jayce789/numjs'
 
 export const truncate = (value: string, max = 80) =>
   value.length > max ? `${value.slice(0, max)}…` : value

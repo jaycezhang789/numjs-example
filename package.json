@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@jayce789/numjs": "^2.1.4",
+    "@jayce789/numjs": "^2.1.5",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
