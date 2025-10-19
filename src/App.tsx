@@ -820,7 +820,7 @@ const useDemoSections = (status: Status, asyncData: LinearAsyncData) =>
 
     const indexMatrix = new Matrix([10, 20, 30, 40, 50, 60], 2, 3)
     const takeColumns = safeTake(indexMatrix, 1, [0, 2])
-    const putRow = safePut( 
+    const putRow = safePut(
       indexMatrix,
       0,
       [1],
