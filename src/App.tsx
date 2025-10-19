@@ -4,20 +4,32 @@ import {
   add,
   backendKind,
   broadcastTo,
+  conv2d,
   div,
   dot,
+  im2col,
   init,
   matrixFromFixed,
   matmul,
+  matmulAsync,
+  maxPool,
   median,
   mul,
   nanmean,
   nansum,
   neg,
   percentile,
+  compress,
+  sobelFilter,
+  gaussianBlur,
+  svd,
+  qr,
+  solve,
+  eigen,
   sub,
   sum,
   where,
+  avgPool,
 } from '@jayce789/numjs'
 import './App.css'
 
@@ -62,6 +74,21 @@ type DocGroup = {
   }[]
 }
 
+type LinearAsyncData = {
+  matmulAsync?: Matrix
+  matmulAsyncError?: string
+  conv2d?: Matrix
+  conv2dError?: string
+  sobel?: {
+    gx: Matrix
+    gy: Matrix
+    magnitude?: Matrix
+  }
+  sobelError?: string
+  gaussian?: Matrix
+  gaussianError?: string
+}
+
 const truncate = (value: string, max = 80) =>
   value.length > max ? `${value.slice(0, max)}…` : value
 
@@ -74,6 +101,11 @@ const toNumeric = (value: number | bigint | boolean): number => {
   }
   return value ? 1 : 0
 }
+
+const formatFloatArray = (array: ArrayLike<number>) =>
+  Array.from(array)
+    .map((value) => formatNumber(value))
+    .join(', ')
 
 const matrixTo2D = (matrix: Matrix): number[][] => {
   const rows = matrix.rows
@@ -99,6 +131,41 @@ const matrixFrom2D = (data: number[][]): Matrix => {
 }
 
 const clone2D = (data: number[][]): number[][] => data.map((row) => row.slice())
+
+const MATMUL_LEFT_VALUES = [1, 0, -1, 2, 3, 1]
+const MATMUL_RIGHT_VALUES = [2, 1, 0, -1, 1, 2]
+const CONV_INPUT_VALUES = [1, 2, 1, 0, 1, 0, 2, 1, 2]
+const CONV_KERNEL_VALUES = [1, 0, -1, 1]
+const POOL_INPUT_VALUES = [
+  1, 2, 3, 4,
+  5, 6, 7, 8,
+  9, 10, 11, 12,
+  13, 14, 15, 16,
+]
+const SOBEL_INPUT_VALUES = [
+  1, 2, 1,
+  0, 0, 0,
+  -1, -2, -1,
+]
+const SVD_INPUT_VALUES = [
+  4, 0, 3,
+  5, -1, 0,
+  2, 3, 1,
+]
+const QR_INPUT_VALUES = [
+  12, -51, 4,
+  6, 167, -68,
+  -4, 24, -41,
+]
+const SOLVE_MATRIX_VALUES = [
+  3, 2,
+  1, 4,
+]
+const SOLVE_B_VALUES = [7, 10]
+const EIGEN_INPUT_VALUES = [
+  2, -1,
+  -1, 2,
+]
 
 const safeTake = (matrix: Matrix, axis: number, indices: readonly number[]) => {
   try {
@@ -400,7 +467,79 @@ const documentationGroups: DocGroup[] = [
   },
 ]
 
-const useDemoSections = (status: Status) =>
+const useLinearAsyncData = (status: Status) => {
+  const [data, setData] = useState<LinearAsyncData>({})
+
+  useEffect(() => {
+    if (status !== 'ready') {
+      setData({})
+      return
+    }
+
+    let cancelled = false
+
+    const run = async () => {
+      const results: LinearAsyncData = {}
+
+      try {
+        const left = new Matrix(MATMUL_LEFT_VALUES, 2, 3)
+        const right = new Matrix(MATMUL_RIGHT_VALUES, 3, 2)
+        results.matmulAsync = await matmulAsync(left, right)
+      } catch (err) {
+        results.matmulAsyncError =
+          err instanceof Error
+            ? err.message
+            : 'matmulAsync 不受当前后端支持'
+      }
+
+      try {
+        const input = new Matrix(CONV_INPUT_VALUES, 3, 3)
+        const kernel = new Matrix(CONV_KERNEL_VALUES, 2, 2)
+        results.conv2d = await conv2d(input, kernel)
+      } catch (err) {
+        results.conv2dError =
+          err instanceof Error
+            ? err.message
+            : 'conv2d 不受当前后端支持'
+      }
+
+      try {
+        const input = new Matrix(SOBEL_INPUT_VALUES, 3, 3)
+        const response = await sobelFilter(input, { magnitude: true })
+        results.sobel = response
+      } catch (err) {
+        results.sobelError =
+          err instanceof Error
+            ? err.message
+            : 'sobelFilter 不受当前后端支持'
+      }
+
+      try {
+        const input = new Matrix(SOBEL_INPUT_VALUES, 3, 3)
+        results.gaussian = await gaussianBlur(input, { sigma: 1.2, size: 3 })
+      } catch (err) {
+        results.gaussianError =
+          err instanceof Error
+            ? err.message
+            : 'gaussianBlur 不受当前后端支持'
+      }
+
+      if (!cancelled) {
+        setData(results)
+      }
+    }
+
+    run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [status])
+
+  return data
+}
+
+const useDemoSections = (status: Status, asyncData: LinearAsyncData) =>
   useMemo<DemoSection[]>(() => {
     if (status !== 'ready') {
       return []
@@ -448,8 +587,8 @@ const useDemoSections = (status: Status) =>
     const rounded = rawValues.round(1)
     const ints = clipped.astype('int32')
 
-    const matmulLeft = new Matrix([1, 0, -1, 2, 3, 1], 2, 3)
-    const matmulRight = new Matrix([2, 1, 0, -1, 1, 2], 3, 2)
+    const matmulLeft = new Matrix(MATMUL_LEFT_VALUES, 2, 3)
+    const matmulRight = new Matrix(MATMUL_RIGHT_VALUES, 3, 2)
     const matmulResult = matmul(matmulLeft, matmulRight)
 
     const viewMatrix = new Matrix([1, 2, 3, 4, 5, 6], 2, 3)
@@ -500,6 +639,7 @@ const useDemoSections = (status: Status) =>
     )
     const zerosGrid = new Matrix(Array(9).fill(0), 3, 3)
     const maskedGrid = where(mask, shiftedGrid, zerosGrid)
+    const compressedValues = compress(mask, shiftedGrid)
 
     const statsMatrix = new Matrix([6, 4, 2, NaN, 8, 10], 2, 3)
     const totalSum = formatNumber(Number(sum(statsMatrix).toArray()[0]))
@@ -509,6 +649,162 @@ const useDemoSections = (status: Status) =>
     const percentile90 = formatNumber(
       Number(percentile(statsMatrix, 90).toArray()[0]),
     )
+
+    const convInputMatrix = new Matrix(CONV_INPUT_VALUES, 3, 3)
+    const convKernelMatrix = new Matrix(CONV_KERNEL_VALUES, 2, 2)
+    const im2colMatrix = im2col(convInputMatrix, 2, 2)
+    const poolInputMatrix = new Matrix(POOL_INPUT_VALUES, 4, 4)
+    const maxPoolMatrix = maxPool(poolInputMatrix, 2, 2, { stride: 2 })
+    const avgPoolMatrix = avgPool(poolInputMatrix, 2, 2, { stride: 2 })
+    const sobelInputMatrix = new Matrix(SOBEL_INPUT_VALUES, 3, 3)
+
+    const matmulAsyncOutputs: DemoOutput[] = asyncData.matmulAsync
+      ? [
+          {
+            label: '异步结果 (2×2)',
+            table: matrixToTable(asyncData.matmulAsync),
+          },
+        ]
+      : [
+          {
+            label: '异步结果',
+            scalar: asyncData.matmulAsyncError ?? '正在计算…',
+          },
+        ]
+
+    const convOutputs: DemoOutput[] = [
+      asyncData.conv2d
+        ? {
+            label: 'conv2d 输入卷积 (2×2)',
+            table: matrixToTable(asyncData.conv2d),
+          }
+        : {
+            label: 'conv2d 输入卷积',
+            scalar: asyncData.conv2dError ?? '正在计算…',
+          },
+      {
+        label: 'im2col(input, 2, 2)',
+        table: matrixToTable(im2colMatrix),
+      },
+      {
+        label: 'maxPool(kernel=2, stride=2)',
+        table: matrixToTable(maxPoolMatrix),
+      },
+      {
+        label: 'avgPool(kernel=2, stride=2)',
+        table: matrixToTable(avgPoolMatrix),
+      },
+    ]
+
+    const sobelBlurOutputs: DemoOutput[] = []
+    if (asyncData.sobel) {
+      sobelBlurOutputs.push(
+        {
+          label: 'sobelFilter gx',
+          table: matrixToTable(asyncData.sobel.gx),
+        },
+        {
+          label: 'sobelFilter gy',
+          table: matrixToTable(asyncData.sobel.gy),
+        },
+      )
+      if (asyncData.sobel.magnitude) {
+        sobelBlurOutputs.push({
+          label: '梯度幅值',
+          table: matrixToTable(asyncData.sobel.magnitude),
+        })
+      }
+    } else {
+      sobelBlurOutputs.push({
+        label: 'sobelFilter',
+        scalar: asyncData.sobelError ?? '正在计算…',
+      })
+    }
+
+    sobelBlurOutputs.push(
+      asyncData.gaussian
+        ? {
+            label: 'gaussianBlur (σ=1.2)',
+            table: matrixToTable(asyncData.gaussian),
+          }
+        : {
+            label: 'gaussianBlur',
+            scalar: asyncData.gaussianError ?? '正在计算…',
+          },
+    )
+
+    const svdInputMatrix = new Matrix(SVD_INPUT_VALUES, 3, 3)
+    let svdOutputs: DemoOutput[]
+    try {
+      const { u, s, vt } = svd(svdInputMatrix)
+      svdOutputs = [
+        { label: 'U', table: matrixToTable(u) },
+        { label: 'Σ (对角)', scalar: formatFloatArray(s) },
+        { label: 'Vᵀ', table: matrixToTable(vt) },
+      ]
+    } catch (err) {
+      svdOutputs = [
+        {
+          label: 'svd',
+          scalar:
+            err instanceof Error ? err.message : 'svd 不受当前后端支持',
+        },
+      ]
+    }
+
+    const qrInputMatrix = new Matrix(QR_INPUT_VALUES, 3, 3)
+    let qrOutputs: DemoOutput[]
+    try {
+      const { q, r } = qr(qrInputMatrix)
+      qrOutputs = [
+        { label: 'Q', table: matrixToTable(q) },
+        { label: 'R', table: matrixToTable(r) },
+      ]
+    } catch (err) {
+      qrOutputs = [
+        {
+          label: 'qr',
+          scalar:
+            err instanceof Error ? err.message : 'qr 不受当前后端支持',
+        },
+      ]
+    }
+
+    const solveMatrixA = new Matrix(SOLVE_MATRIX_VALUES, 2, 2)
+    const solveMatrixB = new Matrix(SOLVE_B_VALUES, 2, 1)
+    let solveOutputs: DemoOutput[]
+    try {
+      const solution = solve(solveMatrixA, solveMatrixB)
+      solveOutputs = [
+        { label: '解向量', table: matrixToTable(solution) },
+      ]
+    } catch (err) {
+      solveOutputs = [
+        {
+          label: 'solve',
+          scalar:
+            err instanceof Error ? err.message : 'solve 不受当前后端支持',
+        },
+      ]
+    }
+
+    const eigenInputMatrix = new Matrix(EIGEN_INPUT_VALUES, 2, 2)
+    let eigenOutputs: DemoOutput[]
+    try {
+      const { values, vectors } = eigen(eigenInputMatrix)
+      eigenOutputs = [
+        { label: '特征值', scalar: formatFloatArray(values) },
+        { label: '特征向量', table: matrixToTable(vectors) },
+      ]
+    } catch (err) {
+      eigenOutputs = [
+        {
+          label: 'eigen',
+          scalar:
+            err instanceof Error ? err.message : 'eigen 不受当前后端支持',
+        },
+      ]
+    }
 
     const dotVectorA = new Matrix([1, 2, 3], 1, 3)
     const dotVectorB = new Matrix([4, 5, 6], 1, 3)
@@ -693,6 +989,34 @@ const useDemoSections = (status: Status) =>
               'stack 可在不同 axis 上生成深度或通道维度，适合构建批数据或张量。',
           },
           {
+            title: '矩阵转置',
+            description: 'transpose() 将矩阵的行列互换，返回新的转置矩阵。',
+            expression: 'matrix.transpose()',
+            inputs: [
+              { label: '原始矩阵 (2×3)', table: matrixToTable(viewMatrix) },
+            ],
+            outputs: [{ label: '转置矩阵 (3×2)', table: matrixToTable(transposed) }],
+            highlight:
+              '转置操作不会修改原矩阵，常用于线性代数与特征处理场景。',
+          },
+          {
+            title: '广播示例',
+            description:
+              'broadcastTo(rows, cols) 可将较小矩阵扩展为目标形状以便对齐运算。',
+            expression: 'matrix.broadcastTo(rows, cols)',
+            inputs: [
+              { label: '行向量 (1×3)', table: matrixToTable(rowVector) },
+            ],
+            outputs: [
+              {
+                label: 'broadcastTo(3, 3)',
+                table: matrixToTable(broadcastedRow),
+              },
+            ],
+            highlight:
+              'broadcastTo 会复制行/列以满足目标形状，是进行批量偏移/拼接的常见前置步骤。',
+          },
+          {
             title: '索引与写入',
             description:
               'take/put/gather/scatter 提供灵活的索引读取与写入操作。',
@@ -791,6 +1115,18 @@ const useDemoSections = (status: Status) =>
               'NumJS 会在 N-API 与 WebAssembly 后端之间自动选择最优实现。',
           },
           {
+            title: '异步矩阵乘法',
+            description: 'matmulAsync(a, b, options?) 提供异步矩阵乘法，优先利用 GPU/N-API。',
+            expression: 'await matmulAsync(A, B)',
+            inputs: [
+              { label: '矩阵 A (2×3)', table: matrixToTable(matmulLeft) },
+              { label: '矩阵 B (3×2)', table: matrixToTable(matmulRight) },
+            ],
+            outputs: matmulAsyncOutputs,
+            highlight:
+              '若当前后端无 GPU 支持，会自动退回 WASM/JS 实现；示例会提示实际运行状态。',
+          },
+          {
             title: '转置与切片',
             description: 'Matrix 提供 transpose、row、column 等常用视图操作。',
             expression: 'matrix.transpose(), matrix.row(1), matrix.column(0)',
@@ -812,6 +1148,59 @@ const useDemoSections = (status: Status) =>
             ],
             highlight:
               '行列视图返回新的矩阵实例，可继续参与计算；slice 支持按区间截取子矩阵。',
+          },
+          {
+            title: '卷积与池化',
+            description:
+              'conv2d、im2col、maxPool、avgPool 演示卷积与池化的基础流程。',
+            expression:
+              'await conv2d(input, kernel) · im2col(input, 2, 2) · maxPool(input, 2, 2, stride=2) · avgPool(...)',
+            inputs: [
+              { label: '卷积输入 (3×3)', table: matrixToTable(convInputMatrix) },
+              { label: '卷积核 (2×2)', table: matrixToTable(convKernelMatrix) },
+              { label: '池化输入 (4×4)', table: matrixToTable(poolInputMatrix) },
+            ],
+            outputs: convOutputs,
+            highlight:
+              'conv2d 在部分浏览器可能退回 JS 版本；im2col 展示卷积展开原理，max/avgPool 则演示 2×2 stride=2 的池化结果。',
+          },
+          {
+            title: '边缘检测与模糊',
+            description:
+              'sobelFilter 与 gaussianBlur 常用于提取梯度和图像平滑。',
+            expression:
+              'await sobelFilter(input, { magnitude: true }) · await gaussianBlur(input, { sigma })',
+            inputs: [
+              { label: '输入矩阵 (3×3)', table: matrixToTable(sobelInputMatrix) },
+            ],
+            outputs: sobelBlurOutputs,
+            highlight:
+              'Sobel 返回水平/垂直梯度并可计算幅值；高斯模糊根据 σ 与核尺寸实现平滑。',
+          },
+          {
+            title: '矩阵分解 (SVD / QR)',
+            description: 'svd 与 qr 提供常见的分解形式，便于数值分析。',
+            expression: 'svd(matrix) · qr(matrix)',
+            inputs: [
+              { label: 'SVD 输入 (3×3)', table: matrixToTable(svdInputMatrix) },
+              { label: 'QR 输入 (3×3)', table: matrixToTable(qrInputMatrix) },
+            ],
+            outputs: [...svdOutputs, ...qrOutputs],
+            highlight:
+              'SVD 展示 U/Σ/Vᵀ 矩阵；QR 分解返回正交矩阵 Q 与上三角矩阵 R，可用于最小二乘等场景。',
+          },
+          {
+            title: '线性方程与特征值',
+            description: 'solve 求解 Ax = b，eigen 返回特征值与特征向量。',
+            expression: 'solve(A, b) · eigen(A)',
+            inputs: [
+              { label: 'A (2×2)', table: matrixToTable(solveMatrixA) },
+              { label: 'b (2×1)', table: matrixToTable(solveMatrixB) },
+              { label: '特征分解矩阵 (2×2)', table: matrixToTable(eigenInputMatrix) },
+            ],
+            outputs: [...solveOutputs, ...eigenOutputs],
+            highlight:
+              'solve 返回线性方程组解向量；eigen 提供特征值数组和对应的特征向量矩阵。',
           },
         ],
       },
@@ -857,6 +1246,20 @@ const useDemoSections = (status: Status) =>
             ],
             highlight:
               'falsy 分支提供默认值，这里与 0 组合，便于在可视化中突出命中的位置。',
+          },
+          {
+            title: '压缩取值',
+            description: 'compress(mask, matrix) 根据布尔掩码提取被选元素。',
+            expression: 'compress(mask, matrix)',
+            inputs: [
+              { label: '矩阵', table: matrixToTable(shiftedGrid) },
+              { label: '掩码', table: matrixToTable(mask) },
+            ],
+            outputs: [
+              { label: '压缩结果 (列向量)', table: matrixToTable(compressedValues) },
+            ],
+            highlight:
+              'compress 返回被掩码选中的元素（以列向量形式），适合快速筛选有效值或重构稀疏向量。',
           },
           {
             title: '列向量广播',
@@ -954,7 +1357,8 @@ const MatrixTable = ({ table }: { table: Table }) => (
 
 function App() {
   const { status, backend, error } = useNumJSStatus()
-  const sections = useDemoSections(status)
+  const linearAsyncData = useLinearAsyncData(status)
+  const sections = useDemoSections(status, linearAsyncData)
   const [activeTab, setActiveTab] = useState<string | null>(null)
 
   const tabList = useMemo(() => {
